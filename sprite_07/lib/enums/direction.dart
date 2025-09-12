@@ -7,3 +7,17 @@ enum Direction {
   /// Bergerak ke kanan
   right,
 }
+
+/// Enum untuk menentukan state player
+enum PlayerState {
+  /// Idle state
+  idle,
+  /// Walking state
+  walking,
+  /// Running state
+  running,
+  /// Jumping state
+  jumping,
+  /// Dead state
+  dead,
+}

@@ -1,11 +1,12 @@
 import 'package:flame/sprite.dart';
 import 'package:flame/flame.dart';
 import 'package:flame/components.dart';
+import 'package:flame/events.dart';
 import '../utils/create_animation_by_limit.dart';
 import '../enums/direction.dart';
 import '../controllers/player_controller.dart';
 
-class PlayerSpriteSheetComponentAnimationFull extends SpriteAnimationComponent with HasGameReference {
+class PlayerSpriteSheetComponentAnimationFull extends SpriteAnimationComponent with HasGameReference, TapCallbacks {
   late double screenWidth;
   late double screenHeight;
 
@@ -29,6 +30,11 @@ class PlayerSpriteSheetComponentAnimationFull extends SpriteAnimationComponent w
   
   /// Apakah player sedang menghadap ke kiri
   bool isFacingLeft = false;
+  
+  /// State player saat ini
+  bool isRunning = false;
+  bool isJumping = false;
+  bool isDead = false;
 
   @override
   void onLoad() async {
@@ -115,6 +121,14 @@ class PlayerSpriteSheetComponentAnimationFull extends SpriteAnimationComponent w
       _updateAnimation();
       _updateFacingDirection();
     };
+    
+    // Set callback untuk perubahan state
+    playerController.onStateChanged = (bool running, bool jumping, bool dead) {
+      isRunning = running;
+      isJumping = jumping;
+      isDead = dead;
+      _updateAnimation();
+    };
   }
 
   @override
@@ -131,16 +145,19 @@ class PlayerSpriteSheetComponentAnimationFull extends SpriteAnimationComponent w
     }
   }
 
-  /// Memperbarui animasi berdasarkan arah gerakan
+  /// Memperbarui animasi berdasarkan arah gerakan dan state
   void _updateAnimation() {
-    switch (currentDirection) {
-      case Direction.left:
-      case Direction.right:
-        animation = walkAnimation;
-        break;
-      case Direction.none:
-        animation = idleAnimation;
-        break;
+    // Prioritas: Dead > Jumping > Running > Walking > Idle
+    if (isDead) {
+      animation = deadAnimation;
+    } else if (isJumping) {
+      animation = jumpAnimation;
+    } else if (isRunning && currentDirection != Direction.none) {
+      animation = runAnimation;
+    } else if (currentDirection != Direction.none) {
+      animation = walkAnimation;
+    } else {
+      animation = idleAnimation;
     }
   }
 
@@ -181,6 +198,19 @@ class PlayerSpriteSheetComponentAnimationFull extends SpriteAnimationComponent w
       position.y = 0;
     } else if (position.y > screenHeight - size.y) {
       position.y = screenHeight - size.y;
+    }
+  }
+  
+  /// Handler untuk tap pada dinosaur
+  @override
+  void onTapDown(TapDownEvent event) {
+    // Toggle antara state mati dan idle
+    if (isDead) {
+      // Jika sedang mati, kembalikan ke idle
+      playerController.setDead(false);
+    } else {
+      // Jika tidak mati, ubah ke state mati
+      playerController.setDead(true);
     }
   }
 }
