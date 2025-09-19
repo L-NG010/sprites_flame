@@ -2,215 +2,160 @@ import 'package:flame/sprite.dart';
 import 'package:flame/flame.dart';
 import 'package:flame/components.dart';
 import 'package:flame/events.dart';
-import '../utils/create_animation_by_limit.dart';
-import '../enums/direction.dart';
+import 'package:flutter/services.dart';
 import '../controllers/player_controller.dart';
 
-class PlayerSpriteSheetComponentAnimationFull extends SpriteAnimationComponent with HasGameReference, TapCallbacks {
-  late double screenWidth;
-  late double screenHeight;
-
-  late double centerX;
-  late double centerY;
-
-  final double spriteSheetWidth = 680;
-  final double spriteSheetHeight = 472;
-
-  late SpriteAnimation deadAnimation;
+class PlayerSpriteSheetComponentAnimationFull extends SpriteAnimationComponent 
+    with HasGameReference, KeyboardHandler, TapCallbacks {
+  
+  final DinoController controller = DinoController();
   late SpriteAnimation idleAnimation;
-  late SpriteAnimation jumpAnimation;
-  late SpriteAnimation runAnimation;
   late SpriteAnimation walkAnimation;
+  late SpriteAnimation runAnimation;
+  late SpriteAnimation jumpAnimation;
+  late SpriteAnimation deadAnimation;
 
-  /// Controller untuk mengatur gerakan player
-  late PlayerController playerController;
-  
-  /// Arah gerakan saat ini
-  Direction currentDirection = Direction.none;
-  
-  /// Apakah player sedang menghadap ke kiri
-  bool isFacingLeft = false;
-  
-  /// State player saat ini
-  bool isRunning = false;
-  bool isJumping = false;
-  bool isDead = false;
+  final double walkSpeed = 200.0;
+  bool isMovingRight = true;
 
   @override
-  void onLoad() async {
+  Future<void> onLoad() async {
     final spriteImage = await Flame.images.load('dino_full.png');
     final spriteSheet = SpriteSheet(
       image: spriteImage,
-      srcSize: Vector2(spriteSheetWidth, spriteSheetHeight),
+      srcSize: Vector2(680, 472),
     );
 
-    // inisialisasi animasi
-    deadAnimation = spriteSheet.createAnimationByLimit(
-      xInit: 0,
-      yInit: 0,
-      step: 8,
-      sizeX: 5,
-      stepTime: .08,
-    );
-
-    idleAnimation = spriteSheet.createAnimationByLimit(
-      xInit: 1,
-      yInit: 2,
-      step: 10,
-      sizeX: 5,
-      stepTime: .08,
-    );
-
-    jumpAnimation = spriteSheet.createAnimationByLimit(
-      xInit: 3,
-      yInit: 0,
-      step: 12,
-      sizeX: 5,
-      stepTime: .08,
-    );
-
-    runAnimation = spriteSheet.createAnimationByLimit(
-      xInit: 5,
-      yInit: 0,
-      step: 8,
-      sizeX: 5,
-      stepTime: .08,
-    );
-
-    walkAnimation = spriteSheet.createAnimationByLimit(
-      xInit: 6,
-      yInit: 2,
-      step: 10,
-      sizeX: 5,
-      stepTime: .08,
-    );
-    // end
-
-    // Set animasi awal ke idle
-    animation = idleAnimation;
-
-    screenWidth = game.size.x;
-    screenHeight = game.size.y;
-
-    // Set ukuran sprite yang lebih kecil untuk tampilan yang lebih baik
-    final double displayWidth = spriteSheetWidth * 0.3; // Skala 30% dari ukuran asli
-    final double displayHeight = spriteSheetHeight * 0.3;
+    // Inisialisasi animasi
+    idleAnimation = _createAnimation(spriteSheet, 1, 2, 10, 5, 0.08);
+    walkAnimation = _createAnimation(spriteSheet, 6, 2, 10, 5, 0.08);
+    runAnimation = _createAnimation(spriteSheet, 5, 0, 8, 5, 0.08);
+    jumpAnimation = _createAnimation(spriteSheet, 3, 0, 12, 5, 0.08);
+    deadAnimation = _createAnimation(spriteSheet, 0, 0, 8, 5, 0.08);
     
-    size = Vector2(displayWidth, displayHeight);
+    // Set animasi awal
+    animation = idleAnimation;
+    
+    // Set ukuran dan posisi
+    size = Vector2(680 * 0.3, 472 * 0.3);
+    position = Vector2(
+      (game.size.x / 2) - (size.x / 2),
+      (game.size.y / 2) - (size.y / 2)
+    );
 
-    // Posisi awal di tengah layar dengan offset yang lebih baik
-    centerX = (screenWidth / 2) - (displayWidth / 2);
-    centerY = (screenHeight / 2) - (displayHeight / 2);
-
-    position = Vector2(centerX, centerY);
-
-    // Inisialisasi player controller
-    _initializeController();
+    // Setup controller callback
+    controller.onStateChanged = _updateAnimation;
   }
 
-  /// Menginisialisasi controller untuk mengatur gerakan player
-  void _initializeController() {
-    playerController = PlayerController();
+  SpriteAnimation _createAnimation(SpriteSheet sheet, int xInit, int yInit, 
+      int step, int sizeX, double stepTime) {
     
-    // Tambahkan controller ke game agar bisa menerima input keyboard
-    game.add(playerController);
+    final List<Sprite> spriteList = [];
+    int x = xInit;
+    int y = yInit - 1;
     
-    // Set callback untuk perubahan arah
-    playerController.onDirectionChanged = (Direction direction) {
-      currentDirection = direction;
+    for (var i = 0; i < step; i++) {
+      if (y >= sizeX) {
+        y = 0;
+        x++;
+      } else {
+        y++;
+      }
+      spriteList.add(sheet.getSprite(x, y));
+    }
+    
+    return SpriteAnimation.spriteList(spriteList, stepTime: stepTime, loop: true);
+  }
+
+  void _updateAnimation() {
+    switch (controller.currentState) {
+      case DinoState.idle:
+        animation = idleAnimation;
+        break;
+      case DinoState.walking:
+        animation = walkAnimation;
+        break;
+      case DinoState.running:
+        animation = runAnimation;
+        break;
+      case DinoState.jumping:
+        animation = jumpAnimation;
+        break;
+      case DinoState.dead:
+        animation = deadAnimation;
+        break;
+    }
+  }
+
+  @override
+  bool onKeyEvent(KeyEvent event, Set<LogicalKeyboardKey> keysPressed) {
+    // Hanya merespon jika sedang idle atau walking
+    if (controller.currentState != DinoState.idle &&
+        controller.currentState != DinoState.walking) {
+      return false;
+    }
+
+    if (event is KeyDownEvent) {
+      if (controller.currentState == DinoState.idle &&
+          event.logicalKey == LogicalKeyboardKey.arrowRight) {
+        controller.startWalking();
+        isMovingRight = true;
+        scale.x = 1;
+        _updateAnimation();
+        return true;
+      } else if (controller.currentState == DinoState.idle &&
+          event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+        // Mulai jalan ke kiri dari idle
+        controller.startWalking();
+        isMovingRight = false;
+        scale.x = -1;
+        _updateAnimation();
+        return true;
+      }
+    }
+
+    // Berhenti jalan saat tombol arrow dilepas
+    if (event is KeyUpEvent &&
+        controller.currentState == DinoState.walking &&
+        (event.logicalKey == LogicalKeyboardKey.arrowRight ||
+         event.logicalKey == LogicalKeyboardKey.arrowLeft)) {
+      controller.stopWalking();
       _updateAnimation();
-      _updateFacingDirection();
-    };
-    
-    // Set callback untuk perubahan state
-    playerController.onStateChanged = (bool running, bool jumping, bool dead) {
-      isRunning = running;
-      isJumping = jumping;
-      isDead = dead;
-      _updateAnimation();
-    };
+      return true;
+    }
+
+    return false;
   }
 
   @override
   void update(double dt) {
     super.update(dt);
     
-    // Update posisi berdasarkan controller dengan gerakan yang smooth
-    if (currentDirection != Direction.none) {
-      final velocity = playerController.getVelocity();
-      position += velocity * dt;
-      
-      // Batasi gerakan dalam layar
-      _constrainToScreen();
+    // Jika sedang walking, gerakkan dino sesuai arah
+    if (controller.currentState == DinoState.walking) {
+      if (isMovingRight) {
+        position.x += walkSpeed * dt;
+        // Jika sampai ujung kanan, berhenti dan kembali ke idle
+        if (position.x > game.size.x - size.x) {
+          position.x = game.size.x - size.x;
+          controller.stopWalking();
+          _updateAnimation();
+        }
+      } else {
+        position.x -= walkSpeed * dt;
+        // Jika sampai ujung kiri, berhenti dan kembali ke idle
+        if (position.x < 0) {
+          position.x = 0;
+          controller.stopWalking();
+          _updateAnimation();
+        }
+      }
     }
   }
 
-  /// Memperbarui animasi berdasarkan arah gerakan dan state
-  void _updateAnimation() {
-    // Prioritas: Dead > Jumping > Running > Walking > Idle
-    if (isDead) {
-      animation = deadAnimation;
-    } else if (isJumping) {
-      animation = jumpAnimation;
-    } else if (isRunning && currentDirection != Direction.none) {
-      animation = runAnimation;
-    } else if (currentDirection != Direction.none) {
-      animation = walkAnimation;
-    } else {
-      animation = idleAnimation;
-    }
-  }
-
-  /// Memperbarui arah menghadap player
-  void _updateFacingDirection() {
-    switch (currentDirection) {
-      case Direction.left:
-        isFacingLeft = true;
-        break;
-      case Direction.right:
-        isFacingLeft = false;
-        break;
-      case Direction.none:
-        // Tidak mengubah arah menghadap saat tidak bergerak
-        break;
-    }
-    
-    // Flip sprite berdasarkan arah menghadap
-    // Menggunakan scale untuk flip horizontal
-    if (isFacingLeft) {
-      scale.x = -1;
-    } else {
-      scale.x = 1;
-    }
-  }
-
-  /// Membatasi gerakan player dalam batas layar
-  void _constrainToScreen() {
-    // Batasi gerakan horizontal menggunakan ukuran display yang sebenarnya
-    if (position.x < 0) {
-      position.x = 0;
-    } else if (position.x > screenWidth - size.x) {
-      position.x = screenWidth - size.x;
-    }
-    
-    // Batasi gerakan vertikal menggunakan ukuran display yang sebenarnya
-    if (position.y < 0) {
-      position.y = 0;
-    } else if (position.y > screenHeight - size.y) {
-      position.y = screenHeight - size.y;
-    }
-  }
-  
-  /// Handler untuk tap pada dinosaur
   @override
   void onTapDown(TapDownEvent event) {
-    // Toggle antara state mati dan idle
-    if (isDead) {
-      // Jika sedang mati, kembalikan ke idle
-      playerController.setDead(false);
-    } else {
-      // Jika tidak mati, ubah ke state mati
-      playerController.setDead(true);
-    }
+    controller.handleTap();
+    _updateAnimation();
   }
 }
